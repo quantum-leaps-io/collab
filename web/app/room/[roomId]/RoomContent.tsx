@@ -287,7 +287,7 @@ export default function RoomContent() {
               gap: 8,
             }}
           >
-            ⚠️ {error} — Check your camera/mic permissions and reload.
+            ⚠️ {error}
           </div>
         )}
 
