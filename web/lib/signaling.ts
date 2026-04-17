@@ -66,29 +66,46 @@ export function listenForAnswer(
   pc: RTCPeerConnection
 ): Unsubscribe {
   const roomRef = doc(db, "rooms", roomId);
+  const calleeCandidatesRef = collection(roomRef, "calleeCandidates");
+  
+  // Buffer for candidates that arrive before remote description is set
+  const candidateBuffer: RTCIceCandidate[] = [];
 
-  // Answer listener
-  const unsub = onSnapshot(roomRef, async (snap) => {
+  // 1. Listen for the Answer
+  const unsubAnswer = onSnapshot(roomRef, async (snap) => {
     const data = snap.data();
     if (data?.answer && !pc.remoteDescription) {
+      console.log("[Signaling] Received answer, setting remote description");
       const answerDescription = new RTCSessionDescription(data.answer);
       await pc.setRemoteDescription(answerDescription);
+      
+      // Process any buffered candidates
+      console.log(`[Signaling] Processing ${candidateBuffer.length} buffered candidates`);
+      while (candidateBuffer.length > 0) {
+        const candidate = candidateBuffer.shift();
+        if (candidate) await pc.addIceCandidate(candidate).catch(console.error);
+      }
     }
   });
 
-  // Callee ICE candidates → add to caller's PC
-  const calleeCandidatesRef = collection(roomRef, "calleeCandidates");
+  // 2. Listen for Callee ICE candidates
   const unsubCandidates = onSnapshot(calleeCandidatesRef, (snap) => {
-    snap.docChanges().forEach((change) => {
+    snap.docChanges().forEach(async (change) => {
       if (change.type === "added") {
         const candidate = new RTCIceCandidate(change.doc.data());
-        pc.addIceCandidate(candidate).catch(console.error);
+        
+        if (pc.remoteDescription) {
+          await pc.addIceCandidate(candidate).catch(console.error);
+        } else {
+          // Buffer candidate if we're not ready yet
+          candidateBuffer.push(candidate);
+        }
       }
     });
   });
 
   return () => {
-    unsub();
+    unsubAnswer();
     unsubCandidates();
   };
 }
