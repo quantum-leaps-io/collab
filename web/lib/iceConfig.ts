@@ -1,0 +1,19 @@
+/**
+ * ICE server configuration for WebRTC.
+ *
+ * STUN: Discovers your public IP. Google provides this for free.
+ * TURN: Relays media when P2P fails (firewalls, symmetric NAT).
+ *       Replace the TURN placeholder with real credentials from
+ *       Twilio Network Traversal, Cloudflare Calls, or coturn.
+ */
+export const ICE_SERVERS: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  // TURN relay — uncomment and fill in when you have credentials:
+  // {
+  //   urls: "turn:your-turn-server.example.com:3478",
+  //   username: "your-username",
+  //   credential: "your-credential",
+  // },
+];
