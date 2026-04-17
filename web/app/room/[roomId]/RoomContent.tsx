@@ -38,7 +38,12 @@ export default function RoomContent() {
   // Resolve auth UID
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
-      if (user) setUid(user.uid);
+      if (user) {
+        console.log("[Collab] Auth resolved, uid:", user.uid);
+        setUid(user.uid);
+      } else {
+        console.warn("[Collab] No authenticated user");
+      }
     });
     return unsub;
   }, []);
@@ -49,8 +54,18 @@ export default function RoomContent() {
 
     const init = async () => {
       try {
+        console.log("[Collab] Initializing room:", roomId);
+
         // 1. Capture local media
-        const stream = await getUserMedia();
+        let stream: MediaStream;
+        try {
+          stream = await getUserMedia();
+          console.log("[Collab] Got local media stream");
+        } catch (mediaErr) {
+          throw new Error(
+            "Camera/microphone access denied. Please allow permissions and reload."
+          );
+        }
         localStreamRef.current = stream;
         setLocalStream(stream);
 
@@ -65,6 +80,7 @@ export default function RoomContent() {
 
         // 4. Collect remote tracks
         pc.ontrack = (event) => {
+          console.log("[Collab] Got remote track:", event.track.kind);
           event.streams[0]?.getTracks().forEach((track) => {
             remote.addTrack(track);
           });
@@ -73,34 +89,50 @@ export default function RoomContent() {
 
         // 5. Monitor connection state
         pc.onconnectionstatechange = () => {
+          console.log("[Collab] Connection state:", pc.connectionState);
           setIsPeerConnected(pc.connectionState === "connected");
+        };
+
+        pc.oniceconnectionstatechange = () => {
+          console.log("[Collab] ICE state:", pc.iceConnectionState);
         };
 
         // 6. Add local tracks
         addTracksToConnection(pc, stream);
 
-        // 7. Determine caller vs callee
-        // Heuristic: if there is no offer in Firestore yet, become caller.
-        // We attempt createRoom first; if the room doc already has an offer, joinRoom.
+        // 7. Determine caller vs callee by checking if offer exists in Firestore
+        let iAmCaller = false;
         try {
-          // Try to JOIN first (callee path)
+          console.log("[Collab] Attempting to join as callee...");
           const unsub = await joinRoom(roomId, pc);
           unsubRef.current = unsub;
-          setIsCaller(false);
-        } catch {
-          // Room doesn't exist — become CALLER
-          await createRoom(pc, uid, roomId);
+          iAmCaller = false;
+          console.log("[Collab] Joined as CALLEE");
+        } catch (joinErr) {
+          console.log("[Collab] Join failed (room may not exist), becoming CALLER:", joinErr);
+          try {
+            await createRoom(pc, uid, roomId);
+            console.log("[Collab] Room created in Firestore as CALLER");
+          } catch (createErr) {
+            console.error("[Collab] Failed to create room in Firestore:", createErr);
+            throw new Error(
+              `Failed to create room: ${createErr instanceof Error ? createErr.message : String(createErr)}. Check Firestore is enabled and rules allow writes.`
+            );
+          }
           const unsub = listenForAnswer(roomId, pc);
           unsubRef.current = unsub;
-          setIsCaller(true);
+          iAmCaller = true;
         }
 
+        setIsCaller(iAmCaller);
         setIsInitialized(true);
+        console.log("[Collab] Initialization complete. Caller:", iAmCaller);
+
       } catch (err: unknown) {
         const message =
           err instanceof Error ? err.message : "Failed to initialize call";
+        console.error("[Collab] Init error:", err);
         setError(message);
-        console.error(err);
       }
     };
 
