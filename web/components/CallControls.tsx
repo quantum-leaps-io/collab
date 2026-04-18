@@ -5,8 +5,12 @@ import { useState } from "react";
 interface CallControlsProps {
   onMuteToggle: () => void;
   onVideoToggle: () => void;
+  onScreenShareToggle: () => void;
+  onRecordToggle: () => void;
   onEndCall: () => void;
   onCopyRoomId: () => void;
+  isScreenSharing: boolean;
+  isRecording: boolean;
   roomId: string;
 }
 
@@ -99,8 +103,12 @@ function ControlButton({
 export default function CallControls({
   onMuteToggle,
   onVideoToggle,
+  onScreenShareToggle,
+  onRecordToggle,
   onEndCall,
   onCopyRoomId,
+  isScreenSharing,
+  isRecording,
   roomId,
 }: CallControlsProps) {
   const [muted, setMuted] = useState(false);
@@ -174,9 +182,23 @@ export default function CallControls({
         onClick={handleVideo}
       />
       <ControlButton
+        id="btn-screen"
+        icon="💻"
+        label={isScreenSharing ? "Stop Sharing" : "Share"}
+        active={isScreenSharing}
+        onClick={onScreenShareToggle}
+      />
+      <ControlButton
+        id="btn-record"
+        icon={isRecording ? "⏹️" : "⏺️"}
+        label={isRecording ? "Stop Record" : "Record"}
+        danger={isRecording}
+        onClick={onRecordToggle}
+      />
+      <ControlButton
         id="btn-copy"
         icon={copied ? "✅" : "🔗"}
-        label={copied ? "Copied!" : "Share"}
+        label={copied ? "Copied!" : "Copy Link"}
         onClick={handleCopy}
       />
       <ControlButton

@@ -28,6 +28,7 @@ export default function RoomContent() {
   const unsubRef = useRef<(() => void) | null>(null);
 
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
+  const [displayStream, setDisplayStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isPeerConnected, setIsPeerConnected] = useState(false);
   const [isInitialized, setIsInitialized] = useState(false);
@@ -35,6 +36,14 @@ export default function RoomContent() {
   const [error, setError] = useState<string | null>(null);
   const [uid, setUid] = useState<string | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
+
+  // Screen share & recording
+  const [isScreenSharing, setIsScreenSharing] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const screenStreamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
+
 
   // Resolve auth UID
   useEffect(() => {
@@ -71,6 +80,7 @@ export default function RoomContent() {
         }
         localStreamRef.current = stream;
         setLocalStream(stream);
+        setDisplayStream(stream);
 
         // 2. Create peer connection
         const pc = createPeerConnection();
@@ -167,6 +177,10 @@ export default function RoomContent() {
 
   const handleEndCall = useCallback(() => {
     unsubRef.current?.();
+    screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
     closePeerConnection(pcRef.current, [
       localStreamRef.current,
       remoteStreamRef.current,
@@ -178,6 +192,112 @@ export default function RoomContent() {
     const url = `${window.location.origin}/room/${roomId}`;
     navigator.clipboard.writeText(url).catch(console.error);
   }, [roomId]);
+
+  const handleScreenShareToggle = useCallback(async () => {
+    if (isScreenSharing) {
+      // Stop sharing
+      screenStreamRef.current?.getTracks().forEach((t) => t.stop());
+      screenStreamRef.current = null;
+      setIsScreenSharing(false);
+      setDisplayStream(localStreamRef.current);
+
+      // Revert track to original camera track
+      if (pcRef.current && localStreamRef.current) {
+        const videoTrack = localStreamRef.current.getVideoTracks()[0];
+        const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
+        if (sender && videoTrack) {
+          sender.replaceTrack(videoTrack).catch(console.error);
+        }
+      }
+      return;
+    }
+
+    try {
+      const screenStream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+      screenStreamRef.current = screenStream;
+      setIsScreenSharing(true);
+      setDisplayStream(screenStream);
+
+      const screenTrack = screenStream.getVideoTracks()[0];
+      
+      // Listen for browser "Stop Sharing" button
+      screenTrack.onended = () => {
+        setIsScreenSharing(false);
+        screenStreamRef.current = null;
+        setDisplayStream(localStreamRef.current);
+        if (pcRef.current && localStreamRef.current) {
+          const videoTrack = localStreamRef.current.getVideoTracks()[0];
+          const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
+          if (sender && videoTrack) {
+            sender.replaceTrack(videoTrack).catch(console.error);
+          }
+        }
+      };
+
+      // Replace track for remote peer
+      if (pcRef.current) {
+        const sender = pcRef.current.getSenders().find((s) => s.track?.kind === "video");
+        if (sender) {
+          sender.replaceTrack(screenTrack).catch(console.error);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to share screen", err);
+    }
+  }, [isScreenSharing]);
+
+  const handleRecordToggle = useCallback(async () => {
+    if (isRecording) {
+      // Stop recording
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+      return;
+    }
+
+    try {
+      // Prompt user to select what to record (usually the current tab)
+      const stream = await navigator.mediaDevices.getDisplayMedia({ 
+        video: { displaySurface: "browser" }, 
+        audio: true 
+      });
+      
+      recordedChunksRef.current = [];
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "video/webm" });
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (e) => {
+        if (e.data.size > 0) recordedChunksRef.current.push(e.data);
+      };
+
+      mediaRecorder.onstop = () => {
+        setIsRecording(false);
+        stream.getTracks().forEach((t) => t.stop());
+        
+        // Export file
+        const blob = new Blob(recordedChunksRef.current, { type: "video/webm" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        document.body.appendChild(a);
+        a.style.display = "none";
+        a.href = url;
+        a.download = `Collab-Meeting-${new Date().toISOString().slice(0, 10)}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+      };
+
+      // Handle user stopping via browser native button
+      stream.getVideoTracks()[0].onended = () => {
+        if (mediaRecorder.state === "recording") mediaRecorder.stop();
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      console.error("Failed to start recording:", err);
+    }
+  }, [isRecording]);
+
 
   if (authLoading) {
     return (
@@ -325,7 +445,7 @@ export default function RoomContent() {
       {/* Video area */}
       <div style={{ flex: 1, padding: "20px", minHeight: 0 }}>
         <VideoGrid
-          localStream={localStream}
+          localStream={displayStream}
           remoteStream={remoteStream}
           isPeerConnected={isPeerConnected}
         />
@@ -335,8 +455,12 @@ export default function RoomContent() {
       <CallControls
         onMuteToggle={handleMuteToggle}
         onVideoToggle={handleVideoToggle}
+        onScreenShareToggle={handleScreenShareToggle}
+        onRecordToggle={handleRecordToggle}
         onEndCall={handleEndCall}
         onCopyRoomId={handleCopyRoomId}
+        isScreenSharing={isScreenSharing}
+        isRecording={isRecording}
         roomId={roomId}
       />
     </div>
