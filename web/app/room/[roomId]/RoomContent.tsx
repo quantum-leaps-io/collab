@@ -15,7 +15,7 @@ import {
 import { createRoom, joinRoom, listenForAnswer } from "@/lib/signaling";
 import VideoGrid from "@/components/VideoGrid";
 import CallControls from "@/components/CallControls";
-import AuthGuard from "@/components/AuthGuard";
+import GuestJoin from "@/components/GuestJoin";
 
 export default function RoomContent() {
   const params = useParams();
@@ -34,6 +34,7 @@ export default function RoomContent() {
   const [isCaller, setIsCaller] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uid, setUid] = useState<string | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
 
   // Resolve auth UID
   useEffect(() => {
@@ -43,7 +44,9 @@ export default function RoomContent() {
         setUid(user.uid);
       } else {
         console.warn("[Collab] No authenticated user");
+        setUid(null);
       }
+      setAuthLoading(false);
     });
     return unsub;
   }, []);
@@ -176,139 +179,166 @@ export default function RoomContent() {
     navigator.clipboard.writeText(url).catch(console.error);
   }, [roomId]);
 
-  return (
-    <AuthGuard>
+  if (authLoading) {
+    return (
       <div
         style={{
           height: "100vh",
           display: "flex",
-          flexDirection: "column",
+          alignItems: "center",
+          justifyContent: "center",
           background: "var(--bg-dark)",
-          overflow: "hidden",
         }}
       >
-        {/* Top bar */}
-        <header
+        <div
+          style={{
+            width: 40,
+            height: 40,
+            borderRadius: "50%",
+            border: "3px solid var(--accent-dim)",
+            borderTopColor: "var(--accent)",
+            animation: "spin-slow 0.8s linear infinite",
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!uid) {
+    return <GuestJoin />;
+  }
+
+  return (
+    <div
+      style={{
+        height: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        background: "var(--bg-dark)",
+        overflow: "hidden",
+      }}
+    >
+      {/* Top bar */}
+      <header
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "12px 24px",
+          borderBottom: "1px solid var(--border)",
+          background: "rgba(10,13,20,0.8)",
+          backdropFilter: "blur(12px)",
+          zIndex: 10,
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div
+            style={{
+              width: 32,
+              height: 32,
+              borderRadius: 10,
+              background: "linear-gradient(135deg, var(--accent) 0%, #7b5fff 100%)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 16,
+            }}
+          >
+            📡
+          </div>
+          <span
+            style={{
+              fontWeight: 800,
+              fontSize: 18,
+              background: "linear-gradient(90deg, #fff 0%, var(--accent) 100%)",
+              WebkitBackgroundClip: "text",
+              WebkitTextFillColor: "transparent",
+              letterSpacing: "-0.02em",
+            }}
+          >
+            Collab
+          </span>
+        </div>
+
+        {/* Connection indicator */}
+        <div
           style={{
             display: "flex",
             alignItems: "center",
-            justifyContent: "space-between",
-            padding: "12px 24px",
-            borderBottom: "1px solid var(--border)",
-            background: "rgba(10,13,20,0.8)",
-            backdropFilter: "blur(12px)",
-            zIndex: 10,
-            flexShrink: 0,
+            gap: 8,
+            padding: "6px 14px",
+            borderRadius: "var(--radius-full)",
+            background: isPeerConnected
+              ? "rgba(61,214,140,0.1)"
+              : "rgba(255,200,0,0.08)",
+            border: `1px solid ${isPeerConnected ? "rgba(61,214,140,0.2)" : "rgba(255,200,0,0.15)"}`,
           }}
         >
-          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: 10,
-                background: "linear-gradient(135deg, var(--accent) 0%, #7b5fff 100%)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontSize: 16,
-              }}
-            >
-              📡
-            </div>
-            <span
-              style={{
-                fontWeight: 800,
-                fontSize: 18,
-                background: "linear-gradient(90deg, #fff 0%, var(--accent) 100%)",
-                WebkitBackgroundClip: "text",
-                WebkitTextFillColor: "transparent",
-                letterSpacing: "-0.02em",
-              }}
-            >
-              Collab
-            </span>
-          </div>
-
-          {/* Connection indicator */}
           <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              padding: "6px 14px",
-              borderRadius: "var(--radius-full)",
-              background: isPeerConnected
-                ? "rgba(61,214,140,0.1)"
-                : "rgba(255,200,0,0.08)",
-              border: `1px solid ${isPeerConnected ? "rgba(61,214,140,0.2)" : "rgba(255,200,0,0.15)"}`,
+              width: 8,
+              height: 8,
+              borderRadius: "50%",
+              background: isPeerConnected ? "var(--success)" : "#ffc800",
             }}
-          >
-            <div
-              style={{
-                width: 8,
-                height: 8,
-                borderRadius: "50%",
-                background: isPeerConnected ? "var(--success)" : "#ffc800",
-              }}
-              className={isPeerConnected ? "" : "animate-blink"}
-            />
-            <span
-              style={{
-                fontSize: 12,
-                fontWeight: 600,
-                color: isPeerConnected ? "var(--success)" : "#ffc800",
-                letterSpacing: "0.03em",
-              }}
-            >
-              {isPeerConnected
-                ? "Connected"
-                : isCaller
-                ? "Waiting for peer…"
-                : "Connecting…"}
-            </span>
-          </div>
-
-          <div style={{ width: 80 }} /> {/* spacer */}
-        </header>
-
-        {/* Error banner */}
-        {error && (
-          <div
-            style={{
-              padding: "12px 24px",
-              background: "var(--danger-dim)",
-              borderBottom: "1px solid rgba(255,79,109,0.2)",
-              color: "var(--danger)",
-              fontSize: 14,
-              fontWeight: 500,
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-            }}
-          >
-            ⚠️ {error}
-          </div>
-        )}
-
-        {/* Video area */}
-        <div style={{ flex: 1, padding: "20px", minHeight: 0 }}>
-          <VideoGrid
-            localStream={localStream}
-            remoteStream={remoteStream}
-            isPeerConnected={isPeerConnected}
+            className={isPeerConnected ? "" : "animate-blink"}
           />
+          <span
+            style={{
+              fontSize: 12,
+              fontWeight: 600,
+              color: isPeerConnected ? "var(--success)" : "#ffc800",
+              letterSpacing: "0.03em",
+            }}
+          >
+            {isPeerConnected
+              ? "Connected"
+              : isCaller
+              ? "Waiting for peer…"
+              : "Connecting…"}
+          </span>
         </div>
 
-        {/* Controls toolbar */}
-        <CallControls
-          onMuteToggle={handleMuteToggle}
-          onVideoToggle={handleVideoToggle}
-          onEndCall={handleEndCall}
-          onCopyRoomId={handleCopyRoomId}
-          roomId={roomId}
+        <div style={{ width: 80 }} /> {/* spacer */}
+      </header>
+
+      {/* Error banner */}
+      {error && (
+        <div
+          style={{
+            padding: "12px 24px",
+            background: "var(--danger-dim)",
+            borderBottom: "1px solid rgba(255,79,109,0.2)",
+            color: "var(--danger)",
+            fontSize: 14,
+            fontWeight: 500,
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          ⚠️ {error}
+        </div>
+      )}
+
+      {/* Video area */}
+      <div style={{ flex: 1, padding: "20px", minHeight: 0 }}>
+        <VideoGrid
+          localStream={localStream}
+          remoteStream={remoteStream}
+          isPeerConnected={isPeerConnected}
         />
       </div>
-    </AuthGuard>
+
+      {/* Controls toolbar */}
+      <CallControls
+        onMuteToggle={handleMuteToggle}
+        onVideoToggle={handleVideoToggle}
+        onEndCall={handleEndCall}
+        onCopyRoomId={handleCopyRoomId}
+        roomId={roomId}
+      />
+    </div>
   );
 }
