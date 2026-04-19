@@ -31,7 +31,7 @@ export default function RoomContent() {
   const [displayStream, setDisplayStream] = useState<MediaStream | null>(null);
   const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
   const [isPeerConnected, setIsPeerConnected] = useState(false);
-  const [isInitialized, setIsInitialized] = useState(false);
+  const isInitializedRef = useRef(false);
   const [isCaller, setIsCaller] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [uid, setUid] = useState<string | null>(null);
@@ -62,7 +62,8 @@ export default function RoomContent() {
 
   // Initialize WebRTC once we have auth + roomId
   useEffect(() => {
-    if (!uid || isInitialized) return;
+    if (!uid || isInitializedRef.current) return;
+    isInitializedRef.current = true;
 
     const init = async () => {
       try {
@@ -138,7 +139,6 @@ export default function RoomContent() {
         }
 
         setIsCaller(iAmCaller);
-        setIsInitialized(true);
         console.log("[Collab] Initialization complete. Caller:", iAmCaller);
 
       } catch (err: unknown) {
